@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schema Audit Report - {{ business.name }}</title>
+    <style>
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            color: #1f2937;
+            background-color: #f9fafb;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 24px 16px;
+        }
+
+        /* ---- Header ---- */
+        .header {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+            color: #ffffff;
+            padding: 40px 32px;
+            border-radius: 12px;
+            margin-bottom: 24px;
+        }
+
+        .header-logo {
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 24px;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+
+        .header-details {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.85);
+            line-height: 1.8;
+        }
+
+        .header-details a {
+            color: #93c5fd;
+            text-decoration: none;
+        }
+
+        .header-details a:hover {
+            text-decoration: underline;
+        }
+
+        /* ---- Score Badge ---- */
+        .score-section {
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 32px;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .score-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background-color: {{ score_color }};
+            color: #ffffff;
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+
+        .quality-label {
+            display: inline-block;
+            padding: 6px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            background-color: {{ quality_bg }};
+            color: {{ quality_color }};
+        }
+
+        .score-subtitle {
+            font-size: 14px;
+            color: #6b7280;
+            margin-top: 12px;
+        }
+
+        /* ---- Check Results ---- */
+        .checks-section {
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 32px;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .checks-section h2 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #111827;
+        }
+
+        .check-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            border-left: 4px solid;
+        }
+
+        .check-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .check-pass {
+            border-left-color: #10b981;
+            background-color: #f0fdf4;
+        }
+
+        .check-fail {
+            border-left-color: #ef4444;
+            background-color: #fef2f2;
+        }
+
+        .check-icon {
+            flex-shrink: 0;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+            margin-top: 2px;
+        }
+
+        .check-pass .check-icon {
+            background-color: #10b981;
+            color: #ffffff;
+        }
+
+        .check-fail .check-icon {
+            background-color: #ef4444;
+            color: #ffffff;
+        }
+
+        .check-content {
+            flex: 1;
+        }
+
+        .check-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: #111827;
+            margin-bottom: 4px;
+        }
+
+        .check-description {
+            font-size: 13px;
+            color: #6b7280;
+            line-height: 1.5;
+        }
+
+        /* ---- Issues Section ---- */
+        .issues-section {
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 32px;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .issues-section h2 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #111827;
+        }
+
+        .issues-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .issues-list li {
+            padding: 10px 0 10px 24px;
+            position: relative;
+            font-size: 14px;
+            color: #374151;
+            border-bottom: 1px solid #f3f4f6;
+        }
+
+        .issues-list li:last-child {
+            border-bottom: none;
+        }
+
+        .issues-list li::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 16px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #ef4444;
+        }
+
+        .no-issues {
+            color: #10b981;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        /* ---- Schema Section ---- */
+        .schema-section {
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 32px;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .schema-section h2 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #111827;
+        }
+
+        .schema-intro {
+            font-size: 14px;
+            color: #6b7280;
+            margin-bottom: 16px;
+        }
+
+        .code-block-wrapper {
+            position: relative;
+        }
+
+        .code-block {
+            background-color: #1e293b;
+            color: #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            overflow-x: auto;
+            font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", Menlo, Consolas, monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            white-space: pre;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: #334155;
+            color: #e2e8f0;
+            border: 1px solid #475569;
+            border-radius: 6px;
+            padding: 6px 14px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .copy-btn:hover {
+            background-color: #475569;
+        }
+
+        .copy-btn.copied {
+            background-color: #10b981;
+            border-color: #10b981;
+            color: #ffffff;
+        }
+
+        /* ---- Footer ---- */
+        .footer {
+            text-align: center;
+            padding: 24px 16px;
+            color: #9ca3af;
+            font-size: 13px;
+        }
+
+        .footer-brand {
+            font-weight: 600;
+            color: #6b7280;
+        }
+
+        /* ---- Responsive ---- */
+        @media (max-width: 640px) {
+            .container {
+                padding: 16px 12px;
+            }
+
+            .header {
+                padding: 28px 20px;
+            }
+
+            .header h1 {
+                font-size: 22px;
+            }
+
+            .score-section,
+            .checks-section,
+            .issues-section,
+            .schema-section {
+                padding: 20px;
+            }
+
+            .check-item {
+                padding: 12px;
+            }
+
+            .code-block {
+                font-size: 11px;
+                padding: 14px;
+            }
+        }
+
+        @media print {
+            body {
+                background-color: #ffffff;
+            }
+
+            .container {
+                max-width: none;
+                padding: 0;
+            }
+
+            .copy-btn {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+
+        <!-- Header -->
+        <div class="header">
+            <div class="header-logo">White Pine Agency &mdash; Schema Audit</div>
+            <h1>{{ business.name }}</h1>
+            <div class="header-details">
+                {% if business.address %}{{ business.address }}<br>{% endif %}
+                {% if business.phone %}{{ business.phone }}<br>{% endif %}
+                {% if business.website_url %}<a href="{{ business.website_url }}" target="_blank" rel="noopener">{{ business.website_url }}</a><br>{% endif %}
+                Audit Date: {{ audit.audited_at[:10] }}
+            </div>
+        </div>
+
+        <!-- Score Badge -->
+        <div class="score-section">
+            <div class="score-badge">{{ audit.score }}/5</div>
+            <br>
+            <span class="quality-label">{{ lead_quality }}</span>
+            <p class="score-subtitle">
+                {% if audit.score <= 2 %}
+                    Your website has significant structured data gaps that may be limiting your local search visibility.
+                {% elif audit.score == 3 %}
+                    Your website has some structured data in place but there is room for improvement.
+                {% else %}
+                    Your website's structured data is well optimized for local search.
+                {% endif %}
+            </p>
+        </div>
+
+        <!-- 5 Check Results -->
+        <div class="checks-section">
+            <h2>Audit Results</h2>
+
+            <!-- Check 1: Schema Exists -->
+            <div class="check-item {{ 'check-pass' if audit.has_schema else 'check-fail' }}">
+                <div class="check-icon">{{ '&#10003;' if audit.has_schema else '&#10005;' }}</div>
+                <div class="check-content">
+                    <div class="check-title">LocalBusiness Schema Markup</div>
+                    <div class="check-description">
+                        {% if audit.has_schema %}
+                            A LocalBusiness JSON-LD schema was found on your homepage. This helps search engines understand your business information.
+                        {% else %}
+                            No LocalBusiness JSON-LD schema was found on your homepage. Adding structured data helps Google display rich results for your business.
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Check 2: sameAs Connection -->
+            <div class="check-item {{ 'check-pass' if audit.has_sameas else 'check-fail' }}">
+                <div class="check-icon">{{ '&#10003;' if audit.has_sameas else '&#10005;' }}</div>
+                <div class="check-content">
+                    <div class="check-title">Google Maps Connection (sameAs)</div>
+                    <div class="check-description">
+                        {% if audit.has_sameas %}
+                            Your schema includes a sameAs link connecting your website to your Google Maps listing. This strengthens your local search presence.
+                        {% else %}
+                            Your schema is missing a sameAs link to your Google Maps or Apple Maps profile. This connection helps search engines verify your business identity.
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Check 3: Category Alignment -->
+            <div class="check-item {{ 'check-pass' if audit.category_aligned else 'check-fail' }}">
+                <div class="check-icon">{{ '&#10003;' if audit.category_aligned else '&#10005;' }}</div>
+                <div class="check-content">
+                    <div class="check-title">Business Category Alignment</div>
+                    <div class="check-description">
+                        {% if audit.category_aligned %}
+                            Your schema @type aligns with your Google Business Profile categories. Consistent categorization improves relevance signals.
+                        {% else %}
+                            Your schema @type does not match your Google Business Profile categories. Aligning these helps Google serve your business for the right searches.
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Check 4: NAP Consistency -->
+            <div class="check-item {{ 'check-pass' if audit.nap_consistent else 'check-fail' }}">
+                <div class="check-icon">{{ '&#10003;' if audit.nap_consistent else '&#10005;' }}</div>
+                <div class="check-content">
+                    <div class="check-title">NAP Consistency (Name, Address, Phone)</div>
+                    <div class="check-description">
+                        {% if audit.nap_consistent %}
+                            Your business name, address, and phone number in the schema match your Google Business Profile. Consistent NAP data is a core local SEO signal.
+                        {% else %}
+                            Your business contact information in the schema does not match your Google Business Profile. Inconsistent NAP data can confuse search engines and reduce trust.
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Check 5: Mobile Speed -->
+            <div class="check-item {{ 'check-pass' if audit.mobile_speed_score is not none and audit.mobile_speed_score >= 80 else 'check-fail' }}">
+                <div class="check-icon">{{ '&#10003;' if audit.mobile_speed_score is not none and audit.mobile_speed_score >= 80 else '&#10005;' }}</div>
+                <div class="check-content">
+                    <div class="check-title">Mobile Page Speed</div>
+                    <div class="check-description">
+                        {% if audit.mobile_speed_score is not none %}
+                            Score: {{ audit.mobile_speed_score }}/100{% if audit.mobile_lcp is not none %} | Largest Contentful Paint: {{ audit.mobile_lcp }}s{% endif %}.
+                            {% if audit.mobile_speed_score >= 80 %}
+                                Your mobile performance meets Google's recommended thresholds.
+                            {% else %}
+                                Google prioritizes fast-loading mobile pages. Improving speed can boost your search rankings and reduce visitor bounce rates.
+                            {% endif %}
+                        {% else %}
+                            Mobile speed data could not be retrieved. A fast mobile experience is critical for local search rankings.
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Issues / What This Fixes -->
+        {% if audit.issues %}
+        <div class="issues-section">
+            <h2>What This Report Addresses</h2>
+            <ul class="issues-list">
+                {% for issue in audit.issues %}
+                <li>{{ issue }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% else %}
+        <div class="issues-section">
+            <h2>What This Report Addresses</h2>
+            <p class="no-issues">No issues found. Your structured data looks good!</p>
+        </div>
+        {% endif %}
+
+        <!-- Corrected Schema -->
+        <div class="schema-section">
+            <h2>Recommended Schema Markup</h2>
+            <p class="schema-intro">
+                Below is the recommended JSON-LD structured data for your business. This can be added to your website's homepage inside a <code>&lt;script type="application/ld+json"&gt;</code> tag.
+            </p>
+            <div class="code-block-wrapper">
+                <button class="copy-btn" onclick="copySchema(this)">Copy</button>
+                <pre class="code-block" id="schema-json">{{ corrected_schema_json }}</pre>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <span class="footer-brand">White Pine Agency</span> &mdash; Local SEO Schema Audit<br>
+            Report generated {{ audit.audited_at[:10] }}
+        </div>
+
+    </div>
+
+    <script>
+        function copySchema(btn) {
+            var text = document.getElementById('schema-json').textContent;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(function() {
+                    btn.textContent = 'Copied!';
+                    btn.classList.add('copied');
+                    setTimeout(function() {
+                        btn.textContent = 'Copy';
+                        btn.classList.remove('copied');
+                    }, 2000);
+                });
+            } else {
+                // Fallback for older browsers
+                var textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                document.body.appendChild(textarea);
+                textarea.select();
+                try {
+                    document.execCommand('copy');
+                    btn.textContent = 'Copied!';
+                    btn.classList.add('copied');
+                    setTimeout(function() {
+                        btn.textContent = 'Copy';
+                        btn.classList.remove('copied');
+                    }, 2000);
+                } catch (e) {
+                    btn.textContent = 'Failed';
+                }
+                document.body.removeChild(textarea);
+            }
+        }
+    </script>
+</body>
+</html>
