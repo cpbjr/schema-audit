@@ -36,6 +36,10 @@ class PlacesDiscovery:
                 "X-Goog-FieldMask": (
                     "places.id,places.displayName,places.formattedAddress,"
                     "places.nationalPhoneNumber,places.websiteUri,places.types,"
+                    "places.businessStatus,places.googleMapsUri,places.rating,"
+                    "places.userRatingCount,places.location,places.regularOpeningHours,"
+                    "places.reviews,places.photos,places.addressComponents,"
+                    "places.editorialSummary,places.internationalPhoneNumber,"
                     "nextPageToken"
                 ),
             }
@@ -106,7 +110,8 @@ class PlacesDiscovery:
         if not search_results:
             return 0
 
-        print(f"\nProcessing {len(search_results)} places...")
+        total_candidates = len(search_results)
+        print(f"\nProcessing {total_candidates} places...")
         new_count = 0
 
         for i, place in enumerate(search_results, start=1):
@@ -118,7 +123,7 @@ class PlacesDiscovery:
             # Check if already in DB -- skip if so
             existing = db.get_business(place_id)
             if existing:
-                print(f"  [{i}/{len(search_results)}] {name} -- already in DB, skipping")
+                print(f"  [{i}/{total_candidates}] {name} -- already in DB, skipping")
                 continue
 
             # The new Text Search API already returns the fields we need
@@ -133,14 +138,14 @@ class PlacesDiscovery:
                     details = self.get_place_details(place_id)
                     website = details.get("websiteUri", "")
                     if not website:
-                        print(f"  [{i}/{len(search_results)}] {name} -- no website, skipping")
+                        print(f"  [{i}/{total_candidates}] {name} -- no website, skipping")
                         continue
                     # Use details data for richer info
                     place = details
                     display_name = place.get("displayName", {})
                     name = display_name.get("text", name) if isinstance(display_name, dict) else name
                 except Exception as exc:
-                    print(f"  [{i}/{len(search_results)}] {name} -- details error: {exc}")
+                    print(f"  [{i}/{total_candidates}] {name} -- details error: {exc}")
                     continue
 
             business = Business(
@@ -151,10 +156,17 @@ class PlacesDiscovery:
                 website_url=website,
                 gbp_categories=place.get("types", []),
                 search_query=query,
+                discovery_rank=i,  # 1-based index from search results
+                rank_total_candidates=total_candidates,
+                google_maps_uri=place.get("googleMapsUri", ""),
+                business_status=place.get("businessStatus", ""),
+                rating=place.get("rating"),
+                user_rating_count=place.get("userRatingCount"),
+                raw_data=place,  # Store the full API response
             )
 
             db.insert_business(business)
             new_count += 1
-            print(f"  [{i}/{len(search_results)}] {business.name} -- saved ({business.website_url})")
+            print(f"  [{i}/{total_candidates}] {business.name} -- saved ({business.website_url})")
 
         return new_count

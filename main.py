@@ -392,6 +392,12 @@ def hot_leads(limit: int):
                 f"\n  {i}. {click.style(biz.name, bold=True)}"
                 f"  [Score: {aud.score}/5]"
             )
+            if biz.discovery_rank:
+                 rank_str = f"#{biz.discovery_rank}"
+                 if biz.rank_total_candidates:
+                     rank_str += f" / {biz.rank_total_candidates}"
+                 click.echo(f"     Rank:     {click.style(rank_str, fg='cyan')}")
+
             click.echo(f"     URL:      {biz.website_url}")
             click.echo(f"     Place ID: {biz.id}")
             if aud.issues:
@@ -403,6 +409,55 @@ def hot_leads(limit: int):
         click.echo(
             f"Generate a report: python main.py report <place_id>"
         )
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Command: list-leads
+# ---------------------------------------------------------------------------
+
+@cli.command("list-leads")
+@click.option("--limit", default=20, help="Max number of leads to show.")
+@click.option("--all", is_flag=True, help="Show all businesses, not just un-audited ones.")
+def list_leads(limit: int, all: bool):
+    """List discovered businesses in the database.
+
+    Example: python main.py list-leads --limit 50
+    """
+    db = Database(DB_PATH)
+    try:
+        if all:
+            businesses = db.get_all_businesses()
+        else:
+            businesses = db.get_businesses_without_audit()
+
+        if not businesses:
+            click.echo(click.style("\nNo matching businesses found.", fg="yellow"))
+            return
+
+        shown = businesses[-limit:] if limit > 0 else businesses
+        click.echo()
+        click.echo(click.style(f"Businesses ({len(businesses)} total, showing {len(shown)})", bold=True))
+        click.echo("=" * 70)
+
+        for i, biz in enumerate(shown, start=1):
+            audit = db.get_audit(biz.id)
+            if audit:
+                status = click.style(f"SCORE: {audit.score}/5", fg="green" if audit.score == 5 else "yellow" if audit.score >=3 else "red")
+            else:
+                status = click.style("PENDING", fg="blue")
+            
+            click.echo(f"  {i}. {click.style(biz.name, bold=True)} [{status}]")
+            if biz.discovery_rank:
+                 rank_str = f"#{biz.discovery_rank}"
+                 if biz.rank_total_candidates:
+                     rank_str += f" / {biz.rank_total_candidates}"
+                 click.echo(f"     Rank: {click.style(rank_str, fg='cyan')}")
+            click.echo(f"     URL: {biz.website_url}")
+
+        click.echo("\n" + "=" * 70)
+        click.echo("To audit these leads: python main.py audit-all")
     finally:
         db.close()
 

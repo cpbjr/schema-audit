@@ -23,6 +23,14 @@ class Business:
     gbp_categories: list[str] = field(default_factory=list)
     search_query: str = ""
     discovered_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    contact_status: str = "NEW"  # NEW, CONTACTED, REPLIED, CLOSED
+    discovery_rank: int | None = None
+    rank_total_candidates: int | None = None
+    google_maps_uri: str = ""
+    business_status: str = ""
+    rating: float | None = None
+    user_rating_count: int | None = None
+    raw_data: dict | None = None
 
 
 @dataclass
@@ -41,7 +49,7 @@ class Audit:
     score: int = 0  # 0-5, lower = hotter lead
     audited_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     id: int | None = None
-
+    
 
 @dataclass
 class Report:
@@ -69,6 +77,53 @@ class Database:
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
         self._create_tables()
+        self._migrate_tables()
+
+    # ------------------------------------------------------------------
+    # Schema
+    # ------------------------------------------------------------------
+
+    def _migrate_tables(self) -> None:
+        """Run necessary migrations."""
+        try:
+            self.conn.execute("ALTER TABLE businesses ADD COLUMN contact_status TEXT NOT NULL DEFAULT 'NEW'")
+        except sqlite3.OperationalError:
+            pass  # contact_status already exists
+
+        try:
+            self.conn.execute("ALTER TABLE businesses ADD COLUMN discovery_rank INTEGER")
+        except sqlite3.OperationalError:
+            pass  # discovery_rank already exists
+
+        try:
+            self.conn.execute("ALTER TABLE businesses ADD COLUMN rank_total_candidates INTEGER")
+        except sqlite3.OperationalError:
+            pass  # rank_total_candidates already exists
+
+        try:
+            self.conn.execute("ALTER TABLE businesses ADD COLUMN google_maps_uri TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # google_maps_uri already exists
+
+        try:
+            self.conn.execute("ALTER TABLE businesses ADD COLUMN business_status TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # business_status already exists
+
+        try:
+            self.conn.execute("ALTER TABLE businesses ADD COLUMN rating REAL")
+        except sqlite3.OperationalError:
+            pass  # rating already exists
+
+        try:
+            self.conn.execute("ALTER TABLE businesses ADD COLUMN user_rating_count INTEGER")
+        except sqlite3.OperationalError:
+            pass  # user_rating_count already exists
+
+        try:
+            self.conn.execute("ALTER TABLE businesses ADD COLUMN raw_data TEXT")
+        except sqlite3.OperationalError:
+            pass  # raw_data already exists
 
     # ------------------------------------------------------------------
     # Schema
@@ -85,7 +140,16 @@ class Database:
                 website_url     TEXT NOT NULL DEFAULT '',
                 gbp_categories  TEXT NOT NULL DEFAULT '[]',
                 search_query    TEXT NOT NULL DEFAULT '',
-                discovered_at   TEXT NOT NULL
+                discovered_at   TEXT NOT NULL,
+                contact_status  TEXT NOT NULL DEFAULT 'NEW',
+                discovery_rank  INTEGER,
+                discovery_rank  INTEGER,
+                rank_total_candidates INTEGER,
+                google_maps_uri TEXT NOT NULL DEFAULT '',
+                business_status TEXT NOT NULL DEFAULT '',
+                rating          REAL,
+                user_rating_count INTEGER,
+                raw_data        TEXT
             );
 
             CREATE TABLE IF NOT EXISTS audits (
@@ -130,8 +194,10 @@ class Database:
             """
             INSERT OR IGNORE INTO businesses
                 (id, name, address, phone, website_url,
-                 gbp_categories, search_query, discovered_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 gbp_categories, search_query, discovered_at, contact_status,
+                 discovery_rank, rank_total_candidates,
+                 google_maps_uri, business_status, rating, user_rating_count, raw_data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 business.id,
@@ -142,6 +208,14 @@ class Database:
                 json.dumps(business.gbp_categories),
                 business.search_query,
                 business.discovered_at,
+                business.contact_status,
+                business.discovery_rank,
+                business.rank_total_candidates,
+                business.google_maps_uri,
+                business.business_status,
+                business.rating,
+                business.user_rating_count,
+                json.dumps(business.raw_data) if business.raw_data else None,
             ),
         )
         self.conn.commit()
@@ -183,6 +257,15 @@ class Database:
         if row is None:
             return None
         return self._row_to_business(row)
+
+    def update_business_status(self, business_id: str, status: str) -> bool:
+        """Update the contact status of a business."""
+        cur = self.conn.execute(
+            "UPDATE businesses SET contact_status = ? WHERE id = ?",
+            (status, business_id)
+        )
+        self.conn.commit()
+        return cur.rowcount > 0
 
     # ------------------------------------------------------------------
     # Audit CRUD
@@ -365,6 +448,15 @@ class Database:
 
     @staticmethod
     def _row_to_business(row: sqlite3.Row) -> Business:
+        # Handle potential missing new columns during migration/lazy loading
+        discovery_rank = None
+        if "discovery_rank" in row.keys():
+            discovery_rank = row["discovery_rank"]
+            
+        rank_total_candidates = None
+        if "rank_total_candidates" in row.keys():
+            rank_total_candidates = row["rank_total_candidates"]
+
         return Business(
             id=row["id"],
             name=row["name"],
@@ -374,6 +466,14 @@ class Database:
             gbp_categories=json.loads(row["gbp_categories"]),
             search_query=row["search_query"],
             discovered_at=row["discovered_at"],
+            contact_status=row["contact_status"] if "contact_status" in row.keys() else "NEW",
+            discovery_rank=discovery_rank,
+            rank_total_candidates=rank_total_candidates,
+            google_maps_uri=row["google_maps_uri"] if "google_maps_uri" in row.keys() else "",
+            business_status=row["business_status"] if "business_status" in row.keys() else "",
+            rating=row["rating"] if "rating" in row.keys() else None,
+            user_rating_count=row["user_rating_count"] if "user_rating_count" in row.keys() else None,
+            raw_data=json.loads(row["raw_data"]) if "raw_data" in row.keys() and row["raw_data"] else None,
         )
 
     @staticmethod
