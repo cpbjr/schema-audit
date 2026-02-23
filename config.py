@@ -7,14 +7,21 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env")
 
-# --- Paths ---
+# --- Paths (env vars allow same code to run locally and on server) ---
 BASE_DIR = Path(__file__).parent
-DB_PATH = BASE_DIR / "leads.db"
-REPORTS_DIR = BASE_DIR / "reports"
-TEMPLATES_DIR = BASE_DIR / "templates"
+DB_PATH = Path(os.getenv("DB_PATH", str(BASE_DIR / "leads.db")))
+REPORTS_DIR = Path(os.getenv("REPORTS_DIR", str(BASE_DIR / "reports")))
+TEMPLATES_DIR = Path(os.getenv("TEMPLATES_DIR", str(BASE_DIR / "templates")))
 
 # --- API Keys ---
 GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
+PAGESPEED_API_KEY = os.getenv("PAGESPEED_API_KEY", "")
+
+# --- Auth ---
+WPA_AUDIT_API_KEY = os.getenv("WPA_AUDIT_API_KEY", "")
+
+# --- Rate Limiting ---
+DAILY_DISCOVERY_LIMIT = int(os.getenv("DAILY_DISCOVERY_LIMIT", "5"))
 
 # --- API URLs ---
 PLACES_TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
