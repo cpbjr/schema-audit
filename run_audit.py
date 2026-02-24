@@ -72,9 +72,19 @@ def audit_business(business: dict, writer: SupabaseWriter) -> bool:
 
     print(f"  Auditing {business['name']} ({business['website_url']})...")
     try:
+        from extractor import SchemaExtractor
+        extractor = SchemaExtractor()
         analyzer = SchemaAnalyzer()
-        result = analyzer.run_full_audit(business)
-        writer.insert_audit(result)
+
+        schemas = extractor.extract_schema_from_url(business["website_url"]) or []
+        gbp_data = {
+            "name": business.get("name", ""),
+            "address": business.get("address", ""),
+            "phone": business.get("phone", ""),
+            "types": business.get("gbp_categories", []),
+        }
+        result = analyzer.run_full_audit(business["website_url"], schemas, gbp_data)
+        writer.insert_audit(result, business_id=business["id"])
         print(f"    Score: {result.score}/5  Issues: {len(result.issues)}")
         return True
     except Exception as e:

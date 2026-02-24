@@ -69,12 +69,15 @@ class SupabaseWriter:
 
         self._post("businesses", row)
 
-    def insert_audit(self, audit_result: Any) -> None:
-        """Insert an audit result. audit_result is an AuditResult dataclass from analyzer.py."""
+    def insert_audit(self, audit_result: Any, business_id: str | None = None) -> None:
+        """Insert an audit result. audit_result is an AuditResult dataclass from analyzer.py.
+
+        business_id must be provided since AuditResult does not carry it.
+        """
         d = asdict(audit_result) if hasattr(audit_result, "__dataclass_fields__") else dict(audit_result)
 
         row: dict[str, Any] = {
-            "business_id": d.get("business_id"),
+            "business_id": business_id or d.get("business_id"),
             "has_schema": bool(d.get("has_schema", False)),
             "has_sameas": bool(d.get("has_sameas", False)),
             "category_aligned": bool(d.get("category_aligned", False)),
