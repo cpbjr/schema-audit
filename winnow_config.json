@@ -1,0 +1,262 @@
+{
+  "thresholds": {
+    "identified": 55,
+    "middle_band_lower": 25,
+    "closed": 10
+  },
+  "scoring": {
+    "audit_score": {
+      "max": 25,
+      "description": "Lower audit score = more technical opportunity",
+      "bands": {
+        "0": 25,
+        "1": 20,
+        "2": 12,
+        "3": 6,
+        "4": 2,
+        "5": 0,
+        "no_audit": 8
+      }
+    },
+    "website_quality": {
+      "max": 15,
+      "description": "Has site but it's bad = strongest WPA signal",
+      "bands": {
+        "no_website": 0,
+        "parking_page": 3,
+        "poor": 15,
+        "mediocre": 10,
+        "adequate": 4,
+        "good": 0
+      }
+    },
+    "business_age_sos": {
+      "max": 12,
+      "description": "< 2yr = growth mode, 10yr+ = entrenched. Unknown = neutral.",
+      "bands": {
+        "under_2_years": 12,
+        "2_to_5_years": 9,
+        "5_to_10_years": 5,
+        "over_10_years": 2,
+        "unknown": 5,
+        "sos_failed": 5
+      }
+    },
+    "review_count": {
+      "max": 8,
+      "description": "20-200 = active but not saturated",
+      "bands": {
+        "0": 0,
+        "1_to_9": 3,
+        "10_to_19": 6,
+        "20_to_200": 8,
+        "201_to_500": 5,
+        "over_500": 2
+      }
+    },
+    "review_velocity_90d": {
+      "max": 8,
+      "description": "Recent reviews = active, growing business",
+      "bands": {
+        "0": 0,
+        "1_to_2": 4,
+        "3_to_5": 6,
+        "6_to_10": 8,
+        "over_10": 7
+      }
+    },
+    "rating": {
+      "max": 8,
+      "description": "3.5-4.4 = room to improve + still worth pursuing",
+      "bands": {
+        "no_rating": 0,
+        "under_3": 1,
+        "3_to_3_4": 4,
+        "3_5_to_4_4": 8,
+        "4_5_to_5": 3
+      }
+    },
+    "business_type": {
+      "max": 12,
+      "description": "Local service trades > retail chains > generic",
+      "tier_1_categories": [
+        "plumber", "plumbing", "electrician", "electrical", "hvac", "heating",
+        "roofing", "roofer", "landscaping", "landscaper", "lawn care",
+        "auto repair", "mechanic", "auto body", "car repair",
+        "dentist", "dental", "veterinarian", "vet",
+        "hair salon", "salon", "barber", "beauty",
+        "restaurant", "cafe", "bakery", "pizza",
+        "dog grooming", "grooming", "pet",
+        "cleaning", "maid", "house cleaning", "janitorial",
+        "painting", "painter", "contractor", "remodeling",
+        "flooring", "carpet", "tile",
+        "pest control", "exterminator",
+        "chiropractor", "massage", "physical therapy",
+        "insurance", "accounting", "bookkeeping",
+        "real estate", "mortgage"
+      ],
+      "tier_2_categories": [
+        "retail", "store", "shop", "boutique", "gym", "fitness",
+        "spa", "nail salon", "eyebrow", "waxing",
+        "photography", "photographer", "marketing", "consulting"
+      ],
+      "scores": {
+        "tier_1": 12,
+        "tier_2": 7,
+        "unknown": 4,
+        "chain_detected": 0
+      }
+    },
+    "discovery_rank": {
+      "max": 5,
+      "description": "Rank 6-10 = visible but beatable",
+      "bands": {
+        "1_to_5": 1,
+        "6_to_10": 5,
+        "11_to_20": 3,
+        "over_20": 1,
+        "unknown": 2
+      }
+    },
+    "hosting_rescue": {
+      "max": 7,
+      "description": "Expensive hosting provider = strong pitch angle",
+      "bands": {
+        "premium_hostile": 7,
+        "premium_friendly": 4,
+        "free_builder": 2,
+        "none": 3,
+        "unknown": 1
+      }
+    }
+  },
+  "bonuses": {
+    "website_plus_worst_audit": {
+      "points": 10,
+      "condition": "website_reachable AND audit_score <= 1"
+    },
+    "expensive_hosting": {
+      "points": 10,
+      "condition": "hosting_provider in expensive_providers list"
+    }
+  },
+  "hard_disqualifiers": [
+    {
+      "name": "permanently_closed",
+      "condition": "business_status == 'CLOSED_PERMANENTLY_CLOSED'",
+      "result": "CLOSED"
+    },
+    {
+      "name": "sos_dissolved",
+      "condition": "sos_status == 'Dissolved'",
+      "result": "CLOSED"
+    },
+    {
+      "name": "chain_franchise",
+      "condition": "is_chain == true",
+      "result": "CLOSED"
+    }
+  ],
+  "chain_detection": {
+    "known_franchises": [
+      "subway", "mcdonald", "burger king", "wendy's", "taco bell", "chick-fil-a",
+      "domino's", "pizza hut", "little caesars", "papa john",
+      "starbucks", "dunkin", "tim horton",
+      "great clips", "sport clips", "fantastic sams", "supercuts",
+      "h&r block", "liberty tax", "jackson hewitt",
+      "jiffy lube", "valvoline", "midas", "meineke", "firestone",
+      "7-eleven", "circle k", "casey's",
+      "ups store", "fedex office",
+      "anytime fitness", "planet fitness", "la fitness", "snap fitness",
+      "curves", "orangetheory",
+      "curves", "edward jones", "allstate",
+      "state farm", "nationwide", "farmers insurance",
+      "re/max", "coldwell banker", "keller williams", "century 21",
+      "jiffy lube", "superamerica",
+      "culver's", "arby's", "kfc", "popeyes", "raising cane",
+      "dairy queen", "baskin robbins", "cold stone", "marble slab",
+      "jersey mike's", "firehouse subs", "jimmy john's", "quiznos",
+      "potbelly", "which wich",
+      "aspen dental", "gentle dental", "western dental",
+      "banfield pet hospital", "vca animal hospital",
+      "servpro", "servicemaster", "molly maid", "merry maids",
+      "snap-on", "o'reilly auto parts", "autozone", "advance auto",
+      "napa auto", "pep boys",
+      "ace hardware", "true value",
+      "walmart", "costco", "target", "home depot", "lowe's", "best buy",
+      "texas roadhouse", "applebee's", "chili's", "olive garden", "red lobster",
+      "ihop", "denny's", "waffle house", "cracker barrel", "bob evans",
+      "panera bread", "chipotle", "panda express", "wingstop", "five guys",
+      "shake shack", "in-n-out", "sonic", "jack in the box",
+      "kona grill", "bar louie", "bj's restaurant", "yard house",
+      "outback steakhouse", "longhorn steakhouse", "golden corral",
+      "barbacoa grill",
+      "village at meridian", "the village at meridian",
+      "winco foods", "albertsons", "safeway", "kroger", "fred meyer",
+      "cvs", "walgreens", "rite aid",
+      "wells fargo", "chase", "bank of america", "us bank",
+      "comfort inn", "holiday inn", "hampton inn", "marriott", "hilton",
+      "motel 6", "super 8", "best western",
+      "dollar tree", "dollar general", "family dollar",
+      "petco", "petsmart",
+      "ross", "tj maxx", "marshall's", "burlington",
+      "bath & body works", "victoria's secret", "gap", "old navy",
+      "h&m", "forever 21", "american eagle", "hollister",
+      "t-mobile", "at&t", "verizon",
+      "enterprise rent-a-car", "hertz", "budget", "avis",
+      "uhaul", "public storage", "extra space storage",
+      "westvet"
+    ],
+    "franchise_name_patterns": [
+      "#\\d+$",
+      "\\bno\\.\\s*\\d+\\b",
+      "\\bloc\\.\\s*\\d+\\b"
+    ],
+    "franchise_gbp_categories": [
+      "franchise", "chain"
+    ]
+  },
+  "hosting_providers": {
+    "expensive_hostile": {
+      "providers": ["Townsquare Interactive", "Hibu", "ReachLocal", "Yodle", "Thryv"],
+      "cost_range": {"min": 200, "max": 1000},
+      "signatures": {
+        "Townsquare Interactive": ["townsquareinteractive.com", "beacon-theme", "tsinteractive"],
+        "Hibu": ["hibu.com", "yellowbook", "hibo-"],
+        "ReachLocal": ["reachlocal.com", "rlcdn.com"],
+        "Yodle": ["yodle.com"],
+        "Thryv": ["thryv.com", "thryvcms"]
+      }
+    },
+    "expensive_friendly": {
+      "providers": ["GoDaddy Website Builder", "Wix Premium", "Squarespace", "Weebly"],
+      "cost_range": {"min": 16, "max": 65},
+      "signatures": {
+        "GoDaddy Website Builder": ["godaddy-sites.net", "godaddysites.com"],
+        "Wix": ["wixsite.com", "wix.com", "_wix"],
+        "Squarespace": [".squarespace.com", "squarespace.com/cdn"],
+        "Weebly": ["weebly.com", "weeblysite.com"]
+      }
+    },
+    "free_builder": {
+      "providers": ["Wix Free", "Weebly Free"],
+      "cost_range": {"min": 0, "max": 0},
+      "signatures": {}
+    }
+  },
+  "web_check": {
+    "timeout_seconds": 5,
+    "max_redirects": 3,
+    "head_fetch_max_bytes": 8192,
+    "parking_page_signals": [
+      "domain is for sale",
+      "buy this domain",
+      "parked free",
+      "this domain may be for sale",
+      "godaddy.com/forsale",
+      "sedo.com",
+      "hugedomains.com",
+      "namecheap.com/domains/registration"
+    ]
+  }
+}
