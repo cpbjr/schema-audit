@@ -1,5 +1,7 @@
 """Google Places API (New) discovery module for Schema Audit Lead Generator."""
 
+import os
+import sys
 import requests
 
 from config import (
@@ -7,7 +9,10 @@ from config import (
     PLACES_TEXT_SEARCH_URL,
     REQUEST_TIMEOUT,
 )
-from db import Business, Database
+from db import Business, Database, ServiceRank
+
+sys.path.insert(0, os.path.expanduser("~/cost-logs"))
+from cost_logger import log_api_call
 
 
 class PlacesDiscovery:
@@ -35,7 +40,7 @@ class PlacesDiscovery:
                 "X-Goog-Api-Key": self.api_key,
                 "X-Goog-FieldMask": (
                     "places.id,places.displayName,places.formattedAddress,"
-                    "places.nationalPhoneNumber,places.websiteUri,places.types,"
+                    "places.nationalPhoneNumber,places.websiteUri,places.types,places.primaryType,"
                     "places.businessStatus,places.googleMapsUri,places.rating,"
                     "places.userRatingCount,places.location,places.regularOpeningHours,"
                     "places.reviews,places.photos,places.addressComponents,"
@@ -55,6 +60,7 @@ class PlacesDiscovery:
                 timeout=REQUEST_TIMEOUT,
             )
             resp.raise_for_status()
+            log_api_call("schema-audit", "google-places", "text-search", calls=1)
             data = resp.json()
 
             places = data.get("places", [])
@@ -87,12 +93,13 @@ class PlacesDiscovery:
             "X-Goog-Api-Key": self.api_key,
             "X-Goog-FieldMask": (
                 "id,displayName,formattedAddress,"
-                "nationalPhoneNumber,websiteUri,types"
+                "nationalPhoneNumber,websiteUri,types,primaryType"
             ),
         }
 
         resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
         resp.raise_for_status()
+        log_api_call("schema-audit", "google-places", "place-details", calls=1)
         return resp.json()
 
     # ------------------------------------------------------------------
@@ -155,6 +162,7 @@ class PlacesDiscovery:
                 phone=place.get("nationalPhoneNumber", ""),
                 website_url=website,
                 gbp_categories=place.get("types", []),
+                gbp_primary_type=place.get("primaryType", ""),
                 search_query=query,
                 discovery_rank=i,  # 1-based index from search results
                 rank_total_candidates=total_candidates,
@@ -170,3 +178,103 @@ class PlacesDiscovery:
             print(f"  [{i}/{total_candidates}] {business.name} -- saved ({business.website_url})")
 
         return new_count
+
+    def run_multi_service_discovery(
+        self,
+        db: "Database",
+        queries: list[str],
+        labels: list[str],
+    ) -> None:
+        """Run multiple service queries and build a Service Visibility Matrix.
+
+        For each query:
+        - Discovers businesses and stores them in the businesses table
+        - Records discovery_rank for each found business in service_ranks
+        - Records discovery_rank=NULL for known businesses NOT found in this query
+
+        Args:
+            db: Database instance
+            queries: List of search query strings (e.g. ["plumber Eagle ID", "drain cleaning Eagle ID"])
+            labels: Human-readable labels matching queries (e.g. ["Plumbing", "Drains"])
+        """
+        if len(queries) != len(labels):
+            raise ValueError("queries and labels must be the same length")
+
+        for query, label in zip(queries, labels):
+            print(f"\n--- Service query: {label} ({query}) ---")
+
+            # Run the search — this returns raw place dicts
+            places = self.search_businesses(query)
+            if not places:
+                print(f"  No results for '{query}'")
+                continue
+
+            # Build a map of place_id -> rank for found businesses
+            found_ids: dict[str, int] = {}
+            total = len(places)
+
+            for i, place in enumerate(places, start=1):
+                place_id = place.get("id", "")
+                if not place_id:
+                    continue
+
+                display_name = place.get("displayName", {})
+                name = display_name.get("text", "") if isinstance(display_name, dict) else str(display_name)
+                website = place.get("websiteUri", "")
+
+                # Skip businesses without websites
+                if not website:
+                    continue
+
+                # Upsert into businesses table
+                existing = db.get_business(place_id)
+                if not existing:
+                    from datetime import datetime
+                    business = Business(
+                        id=place_id,
+                        name=name,
+                        address=place.get("formattedAddress", ""),
+                        phone=place.get("nationalPhoneNumber", ""),
+                        website_url=website,
+                        gbp_categories=place.get("types", []),
+                        gbp_primary_type=place.get("primaryType", ""),
+                        search_query=query,
+                        discovery_rank=i,
+                        rank_total_candidates=total,
+                        google_maps_uri=place.get("googleMapsUri", ""),
+                        business_status=place.get("businessStatus", ""),
+                        rating=place.get("rating"),
+                        user_rating_count=place.get("userRatingCount"),
+                        raw_data=place,
+                    )
+                    db.insert_business(business)
+                    print(f"  [{i}/{total}] {name} — new business saved")
+                else:
+                    print(f"  [{i}/{total}] {name} — already in DB")
+
+                found_ids[place_id] = i
+
+                # Record rank for this service query
+                db.upsert_service_rank(ServiceRank(
+                    business_id=place_id,
+                    service_query=query,
+                    service_label=label,
+                    discovery_rank=i,
+                    total_results=total,
+                ))
+
+            # For all known businesses NOT found in this query, record NULL rank
+            all_businesses = db.get_all_businesses()
+            invisible_count = 0
+            for biz in all_businesses:
+                if biz.id not in found_ids:
+                    db.upsert_service_rank(ServiceRank(
+                        business_id=biz.id,
+                        service_query=query,
+                        service_label=label,
+                        discovery_rank=None,
+                        total_results=total,
+                    ))
+                    invisible_count += 1
+
+            print(f"  Found: {len(found_ids)} | Invisible (NULL rank): {invisible_count}")

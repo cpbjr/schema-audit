@@ -8,14 +8,20 @@ Runs a 5-point audit against a business website:
   5. Mobile page speed (via PageSpeed Insights API)
 """
 
+import os
 import re
+import sys
 from dataclasses import dataclass, field
 
 import requests
 
+sys.path.insert(0, os.path.expanduser("~/cost-logs"))
+from cost_logger import log_api_call
+
 from config import (
     GOOGLE_PLACES_API_KEY,
     MAX_LCP_SECONDS,
+    PAGESPEED_API_KEY,
     PAGESPEED_API_URL,
     PASSING_MOBILE_SCORE,
 )
@@ -176,7 +182,7 @@ class SchemaAnalyzer:
         Args:
             website_url: The homepage URL of the business.
             schemas: List of LocalBusiness schema blocks (from extractor).
-            gbp_data: Dict with keys: name, address, phone, types.
+            gbp_data: Dict with keys: name, address, phone, types, primary_type.
 
         Returns:
             AuditResult with individual check results and overall score.
@@ -201,13 +207,23 @@ class SchemaAnalyzer:
         # Check 3: Category alignment (auto-fail if no schema)
         if has_schema:
             category_aligned, msg = self.check_category_alignment(
-                schemas, gbp_data.get("types", [])
+                schemas,
+                gbp_data.get("types", []),
+                gbp_data.get("primary_type", ""),
             )
         else:
             category_aligned = False
             msg = "Category alignment cannot be checked (no schema found)"
         if not category_aligned and msg:
             issues.append(msg)
+
+        # Entity trap: multi-service businesses with category weight problems
+        if has_schema and gbp_data.get("primary_type") and gbp_data.get("types"):
+            trap_issues = self._check_entity_trap(
+                gbp_data.get("primary_type", ""),
+                gbp_data.get("types", []),
+            )
+            issues.extend(trap_issues)
 
         # Check 4: NAP consistency (auto-fail if no schema)
         if has_schema:
@@ -288,15 +304,28 @@ class SchemaAnalyzer:
     # Check 3: Category alignment
     # ------------------------------------------------------------------ #
 
+    # ------------------------------------------------------------------ #
+    # Check 3: Category alignment (primaryType-first)
+    # ------------------------------------------------------------------ #
+
     def check_category_alignment(
         self,
         schemas: list[dict],
         gbp_types: list[str],
+        primary_type: str = "",
     ) -> tuple[bool, str | None]:
-        """Check whether schema @type aligns with GBP business types."""
-        if not gbp_types:
-            return False, "No GBP business types provided for comparison"
+        """Check whether schema @type aligns with GBP entity type.
 
+        Uses primaryType (single definitive entity) when available.
+        Falls back to types-list mapping when primaryType is absent.
+
+        Three cases:
+        1. primaryType present + matches schema @type → Pass
+        2. primaryType present + mismatches → Fail (Entity mismatch)
+        3. primaryType missing/generic:
+           a. types array only generic tags → Fail (Identity crisis / SEO Emergency)
+           b. types array has specific categories → Fall back to types-based logic
+        """
         # Collect all schema @type values
         schema_types: set[str] = set()
         for schema in schemas:
@@ -309,9 +338,55 @@ class SchemaAnalyzer:
         if not schema_types:
             return False, "Schema has no @type field to compare"
 
-        # Build expected types from GBP
+        # Generic/useless primaryType values
+        _GENERIC_PRIMARY_TYPES = {
+            "store", "establishment", "point_of_interest", "local_business", ""
+        }
+
+        # Generic GBP type tags that add no entity signal
+        _GENERIC_GBP_TYPES = {
+            "establishment", "point_of_interest", "store", "local_business_or_poi",
+            "food", "premise", "geocode",
+        }
+
+        effective_primary = (primary_type or "").strip().lower().replace(" ", "_")
+
+        # --- Case 1 & 2: primaryType is present and specific ---
+        if effective_primary and effective_primary not in _GENERIC_PRIMARY_TYPES:
+            # Map primaryType to expected schema.org types
+            expected_types = set(GBP_TO_SCHEMA_TYPES.get(effective_primary, []))
+
+            # Direct match
+            if schema_types & expected_types:
+                return True, None
+
+            # Lenient match is intentionally DISABLED when primaryType is present.
+            # A business with primaryType=roofing_contractor using ProfessionalService
+            # on their website IS misaligned — that's the whole point of this check.
+
+            # No match
+            schema_str = ", ".join(sorted(schema_types))
+            expected_str = ", ".join(sorted(expected_types)) if expected_types else effective_primary
+            return False, (
+                f"Entity mismatch: GBP primaryType is '{effective_primary}' but "
+                f"schema @type is [{schema_str}] — "
+                f"Google AI has low confidence in your category"
+            )
+
+        # --- Case 3: primaryType missing or generic ---
+        specific_gbp_types = [t for t in gbp_types if t not in _GENERIC_GBP_TYPES]
+
+        if not specific_gbp_types:
+            # Case 3a: Only generic tags — SEO Emergency
+            return False, (
+                "Identity crisis: GBP has no specific entity type "
+                "(only generic tags like 'establishment' or 'point_of_interest') — "
+                "a simple category update could double visibility"
+            )
+
+        # Case 3b: Fall back to types-based mapping logic
         expected_types: set[str] = set()
-        for gbp_type in gbp_types:
+        for gbp_type in specific_gbp_types:
             mapped = GBP_TO_SCHEMA_TYPES.get(gbp_type, [])
             expected_types.update(mapped)
 
@@ -320,16 +395,70 @@ class SchemaAnalyzer:
             return True, None
 
         # Lenient match: LocalBusiness / ProfessionalService / Organization
+        # (only allowed in fallback mode, not when primaryType is present)
         if schema_types & _LENIENT_TYPES:
             return True, None
 
         # No match
         found_str = ", ".join(sorted(schema_types))
-        expected_str = ", ".join(sorted(expected_types)) if expected_types else ", ".join(gbp_types)
+        expected_str = ", ".join(sorted(expected_types)) if expected_types else ", ".join(specific_gbp_types)
         return False, (
             f"Schema @type mismatch: found [{found_str}] "
             f"but GBP types suggest [{expected_str}]"
         )
+
+    # ------------------------------------------------------------------ #
+    # Entity trap detection (informational, no score impact)
+    # ------------------------------------------------------------------ #
+
+    def _check_entity_trap(
+        self,
+        primary_type: str,
+        gbp_types: list[str],
+    ) -> list[str]:
+        """Detect multi-service businesses with category weight problems.
+
+        Returns a list of informational issue strings (empty if no trap found).
+        These are appended to the audit issues but do NOT affect the score.
+
+        Example: primaryType=hair_salon but types includes massage_therapist.
+        Google ranks them as a salon first — massage is deprioritized.
+        """
+        _GENERIC_TYPES = {
+            "establishment", "point_of_interest", "store", "local_business_or_poi",
+            "food", "premise", "geocode",
+        }
+
+        effective_primary = primary_type.strip().lower().replace(" ", "_")
+        if not effective_primary or effective_primary in _GENERIC_TYPES:
+            return []
+
+        # Find secondary service types that differ from primary
+        secondary_types = [
+            t for t in gbp_types
+            if t != effective_primary and t not in _GENERIC_TYPES
+        ]
+
+        if not secondary_types:
+            return []
+
+        # Only flag if there are meaningful secondary service types
+        # (skip infrastructure tags like "health" or "service_establishment")
+        _INFRASTRUCTURE_TYPES = {
+            "health", "service_establishment", "beauty_salon", "store",
+            "food_establishment", "home_goods_store",
+        }
+        meaningful_secondary = [t for t in secondary_types if t not in _INFRASTRUCTURE_TYPES]
+
+        if not meaningful_secondary:
+            return []
+
+        secondary_str = ", ".join(meaningful_secondary[:3])  # cap at 3 for readability
+        return [
+            f"Category weight: Google identifies you primarily as '{effective_primary}' — "
+            f"secondary services ({secondary_str}) are deprioritized in search rankings. "
+            f"Dedicated service-page schema can help capture this traffic."
+        ]
 
     # ------------------------------------------------------------------ #
     # Check 4: NAP consistency
@@ -436,15 +565,16 @@ class SchemaAnalyzer:
                 "strategy": "mobile",
                 "category": "performance",
             }
-            # Note: GOOGLE_PLACES_API_KEY can be added here if PageSpeed
-            # Insights API is enabled on the same GCP project.
-            # params["key"] = GOOGLE_PLACES_API_KEY
+            # Add API key if available to increase rate limits
+            if PAGESPEED_API_KEY:
+                params["key"] = PAGESPEED_API_KEY
             resp = requests.get(
                 PAGESPEED_API_URL,
                 params=params,
                 timeout=30,
             )
             resp.raise_for_status()
+            log_api_call("schema-audit", "google-pagespeed", "audit", calls=1)
             data = resp.json()
 
             # Extract performance score (0.0 - 1.0 -> 0 - 100)

@@ -9,9 +9,12 @@ load_dotenv(Path(__file__).parent / ".env")
 
 # --- Paths (env vars allow same code to run locally and on server) ---
 BASE_DIR = Path(__file__).parent
-DB_PATH = Path(os.getenv("DB_PATH", str(BASE_DIR / "leads.db")))
 REPORTS_DIR = Path(os.getenv("REPORTS_DIR", str(BASE_DIR / "reports")))
 TEMPLATES_DIR = Path(os.getenv("TEMPLATES_DIR", str(BASE_DIR / "templates")))
+
+# --- Supabase ---
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 
 # --- API Keys ---
 GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")

@@ -15,8 +15,8 @@ from datetime import datetime
 import click
 
 from analyzer import SchemaAnalyzer
-from config import DB_PATH, GOOGLE_PLACES_API_KEY, ensure_directories
-from db import Audit, Database, Report
+from config import GOOGLE_PLACES_API_KEY, ensure_directories
+from db import Audit, Database
 from discovery import PlacesDiscovery
 from extractor import SchemaExtractor
 from reporter import ReportGenerator
@@ -75,6 +75,7 @@ def _run_single_audit(
         "address": biz.address,
         "phone": biz.phone,
         "types": biz.gbp_categories,
+        "primary_type": biz.gbp_primary_type,
     }
 
     # Run the 5-point audit
@@ -99,6 +100,16 @@ def _run_single_audit(
         click.echo()
         click.echo(click.style(f"  Audit for: {biz.name}", bold=True))
         click.echo(f"  URL: {biz.website_url}")
+
+        # Show service visibility ranks if available
+        ranks = db.get_service_ranks(biz.id)
+        if ranks:
+            click.echo()
+            click.echo(click.style("  Service Visibility:", bold=True))
+            for r in ranks:
+                rank_str = click.style(f"#{r.discovery_rank} of {r.total_results}", fg="cyan") if r.discovery_rank else click.style("NOT VISIBLE", fg="red")
+                click.echo(f"    {r.service_label:<25} {rank_str}")
+
         click.echo()
         click.echo(f"  1. Schema Exists:       {_pass_fail(audit.has_schema)}")
         click.echo(f"  2. sameAs Connection:   {_pass_fail(audit.has_sameas)}")
@@ -152,7 +163,7 @@ def discover(query: str):
             "GOOGLE_PLACES_API_KEY not set. Add it to .env or your environment."
         )
 
-    db = Database(DB_PATH)
+    db = Database()
     discovery = PlacesDiscovery(GOOGLE_PLACES_API_KEY)
 
     try:
@@ -176,7 +187,7 @@ def audit(business_identifier: str):
         python main.py audit ChIJgfDU44ZXrlQRvMn1...
         python main.py audit https://example-plumber.com
     """
-    db = Database(DB_PATH)
+    db = Database()
     extractor = SchemaExtractor()
     analyzer = SchemaAnalyzer()
 
@@ -212,7 +223,7 @@ def audit_all():
 
     Example: python main.py audit-all
     """
-    db = Database(DB_PATH)
+    db = Database()
     extractor = SchemaExtractor()
     analyzer = SchemaAnalyzer()
 
@@ -269,7 +280,7 @@ def report(business_id: str):
 
     Example: python main.py report ChIJgfDU44ZXrlQRvMn1...
     """
-    db = Database(DB_PATH)
+    db = Database()
 
     try:
         biz = db.get_business(business_id)
@@ -325,7 +336,7 @@ def status():
 
     Example: python main.py status
     """
-    db = Database(DB_PATH)
+    db = Database()
 
     try:
         stats = db.get_pipeline_stats()
@@ -372,7 +383,7 @@ def hot_leads(limit: int):
 
     Example: python main.py hot-leads --limit 5
     """
-    db = Database(DB_PATH)
+    db = Database()
 
     try:
         leads = db.get_hot_leads(max_score=2)
@@ -425,7 +436,7 @@ def list_leads(limit: int, all: bool):
 
     Example: python main.py list-leads --limit 50
     """
-    db = Database(DB_PATH)
+    db = Database()
     try:
         if all:
             businesses = db.get_all_businesses()
@@ -460,6 +471,102 @@ def list_leads(limit: int, all: bool):
         click.echo("To audit these leads: python main.py audit-all")
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# Command: multi-discover
+# ---------------------------------------------------------------------------
+
+@cli.command("multi-discover")
+@click.option(
+    "--queries", "-q",
+    multiple=True,
+    required=True,
+    help="Search queries to run (repeat flag for each: -q 'plumber Eagle ID' -q 'drain cleaning Eagle ID')",
+)
+@click.option(
+    "--labels", "-l",
+    multiple=True,
+    required=True,
+    help="Human-readable label for each query (must match query count: -l 'Plumbing' -l 'Drains')",
+)
+def multi_discover(queries: tuple, labels: tuple) -> None:
+    """Run multiple service queries to build a Service Visibility Matrix.
+
+    Tracks discovery rank per service per business. Businesses not found
+    in a query get a NULL rank (invisible for that service).
+
+    Example:
+        python main.py multi-discover \\
+            -q "plumber Eagle ID" -q "hot water repair Eagle ID" \\
+            -l "Plumbing" -l "Hot Water Repair"
+    """
+    if len(queries) != len(labels):
+        click.echo("Error: number of --queries and --labels must match.", err=True)
+        raise SystemExit(1)
+
+    db = Database()
+    discovery = PlacesDiscovery(api_key=GOOGLE_PLACES_API_KEY)
+
+    click.echo(f"Running {len(queries)} service queries...")
+    discovery.run_multi_service_discovery(db, list(queries), list(labels))
+    click.echo("\nDone. Run 'service-gaps' to see visibility gaps.")
+    db.close()
+
+
+# ---------------------------------------------------------------------------
+# Command: service-gaps
+# ---------------------------------------------------------------------------
+
+@cli.command("service-gaps")
+@click.option(
+    "--min-rank", default=10, show_default=True,
+    help="Minimum rank difference to consider a gap (default: 10)",
+)
+def service_gaps(min_rank: int) -> None:
+    """Show businesses with significant service visibility gaps.
+
+    A gap exists when a business ranks well for one service but poorly
+    (or is invisible) for another. These are your best outreach hooks.
+    """
+    db = Database()
+    gaps = db.get_service_gaps(min_rank=min_rank)
+    db.close()
+
+    if not gaps:
+        click.echo("No service gaps found. Run 'multi-discover' first.")
+        return
+
+    click.echo(f"\n{'='*70}")
+    click.echo(f"SERVICE VISIBILITY GAPS  (min rank gap: {min_rank})")
+    click.echo(f"{'='*70}\n")
+
+    hot = [g for g in gaps if g["is_hot"]]
+    warm = [g for g in gaps if not g["is_hot"]]
+
+    if hot:
+        click.echo(f"🔥 HOT LEADS ({len(hot)}) — invisible for at least one service\n")
+        for g in hot:
+            _print_gap(g)
+
+    if warm:
+        click.echo(f"\n⚡ WARM LEADS ({len(warm)}) — ranked but with significant gaps\n")
+        for g in warm:
+            _print_gap(g)
+
+
+def _print_gap(g: dict) -> None:
+    """Print a single service gap entry."""
+    invisible = g["invisible_count"]
+    best = g["best_rank"] if g["best_rank"] is not None else "?"
+    worst = g["worst_rank"] if g["worst_rank"] is not None else "invisible"
+    gap = g["gap"] if g["gap"] is not None else "N/A"
+
+    click.echo(f"  {g['name']}")
+    click.echo(f"  {g['website_url']}")
+    click.echo(f"  Best rank: #{best}  |  Worst: #{worst}  |  Gap: {gap}  |  Invisible for: {invisible} service(s)")
+    click.echo(f"  Services: {g['service_breakdown']}")
+    click.echo()
 
 
 # ---------------------------------------------------------------------------

@@ -39,6 +39,23 @@ To start both the backend API and the frontend web app with a single command:
 - **Web App**: http://localhost:5173 (or 5174/5175 if busy)
 - **API Docs**: http://localhost:8000/docs
 
+**Important**: Make sure the virtual environment is activated before running start.sh:
+```bash
+source venv/bin/activate
+./start.sh
+```
+
+**Alternative - Manual Start (for debugging)**:
+```bash
+# Terminal 1 - Backend API
+source venv/bin/activate
+uvicorn api:app --host 0.0.0.0 --port 8000
+
+# Terminal 2 - Frontend
+cd client
+npm run dev
+```
+
 ## Features & Usage
 
 ### 🔍 Discovery
