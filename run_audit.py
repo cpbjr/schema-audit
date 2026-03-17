@@ -36,14 +36,15 @@ def fetch_businesses(filter_no_audit: bool = False) -> list[dict]:
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Accept-Profile": "wpa",
     }
-    url = f"{SUPABASE_URL}/rest/v1/businesses?select=id,name,website_url,address,phone,gbp_categories,google_maps_uri"
+    url = f"{SUPABASE_URL}/rest/v1/wpa_businesses?select=id,name,website_url,address,phone,gbp_categories,google_maps_uri"
     resp = httpx.get(url, headers=headers, timeout=30)
     resp.raise_for_status()
     businesses = resp.json()
 
     if filter_no_audit:
-        audit_url = f"{SUPABASE_URL}/rest/v1/audits?select=business_id"
+        audit_url = f"{SUPABASE_URL}/rest/v1/wpa_audits?select=business_id"
         audit_resp = httpx.get(audit_url, headers=headers, timeout=30)
         audit_resp.raise_for_status()
         audited_ids = {a["business_id"] for a in audit_resp.json()}
@@ -56,8 +57,9 @@ def fetch_business_by_id(place_id: str) -> dict | None:
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Accept-Profile": "wpa",
     }
-    url = f"{SUPABASE_URL}/rest/v1/businesses?id=eq.{place_id}&select=id,name,website_url,address,phone,gbp_categories,google_maps_uri"
+    url = f"{SUPABASE_URL}/rest/v1/wpa_businesses?id=eq.{place_id}&select=id,name,website_url,address,phone,gbp_categories,google_maps_uri"
     resp = httpx.get(url, headers=headers, timeout=30)
     resp.raise_for_status()
     results = resp.json()

@@ -689,6 +689,8 @@ class SupabaseClient:
             "apikey": SUPABASE_KEY,
             "Authorization": f"Bearer {SUPABASE_KEY}",
             "Content-Type": "application/json",
+            "Accept-Profile": "wpa",
+            "Content-Profile": "wpa",
         }
 
     def get(self, path: str, params: dict | None = None) -> list:
@@ -735,7 +737,7 @@ class WinnowEngine:
         # Base query: NEW businesses not in winnow_decisions
         already_evaluated = {
             row["business_id"]
-            for row in self.db.get("winnow_decisions", {"select": "business_id"})
+            for row in self.db.get("wpa_winnow_decisions", {"select": "business_id"})
         }
 
         params = {
@@ -748,7 +750,7 @@ class WinnowEngine:
         if search_query:
             params["search_query"] = f"ilike.*{search_query}*"
 
-        businesses = self.db.get("businesses", params)
+        businesses = self.db.get("wpa_businesses", params)
 
         # Filter already evaluated
         businesses = [b for b in businesses if b["id"] not in already_evaluated]
@@ -764,7 +766,7 @@ class WinnowEngine:
         return businesses[:batch_size]
 
     def fetch_single(self, place_id: str) -> dict | None:
-        results = self.db.get("businesses", {
+        results = self.db.get("wpa_businesses", {
             "id": f"eq.{place_id}",
             "select": "id,name,address,phone,website_url,gbp_categories,search_query,"
                       "discovery_rank,business_status,rating,user_rating_count,raw_data,contact_status",
@@ -773,7 +775,7 @@ class WinnowEngine:
 
     def _get_audited_ids_with_scores(self) -> dict:
         """Returns {business_id: min_score} for all audited businesses."""
-        rows = self.db.get("audits", {"select": "business_id,score"})
+        rows = self.db.get("wpa_audits", {"select": "business_id,score"})
         result = {}
         for row in rows:
             bid = row["business_id"]
@@ -784,7 +786,7 @@ class WinnowEngine:
         return result
 
     def _get_audit_for_business(self, business_id: str) -> dict | None:
-        rows = self.db.get("audits", {
+        rows = self.db.get("wpa_audits", {
             "business_id": f"eq.{business_id}",
             "order": "audited_at.desc",
             "limit": "1",
@@ -885,7 +887,9 @@ class WinnowEngine:
             "hosting_tier": hosting_result.get("tier"),
             # Include raw data for Haiku (middle band)
             "_review_snippet": self._extract_review_snippet(raw),
-            "_website_head_snippet": (web_result.get("head_html") or "")[:500],
+            "_website_url": business.get("website_url") or "",
+            "_is_chain": chain,
+            "_website_head_snippet": (web_result.get("head_html") or "SCRAPE_FAILED")[:500],
         }
 
     def _extract_review_snippet(self, raw_data: dict | None) -> str:
@@ -923,7 +927,7 @@ class WinnowEngine:
             "config_snapshot": config_snapshot,
             "run_by": "claude-code",
         }
-        self.db.post("winnow_runs", data)
+        self.db.post("wpa_winnow_runs", data)
 
     def write_decision(self, decision: dict, run_id: str) -> None:
         if self.dry_run:
@@ -947,12 +951,12 @@ class WinnowEngine:
         }
         # Remove None values
         row = {k: v for k, v in row.items() if v is not None}
-        self.db.post("winnow_decisions", row)
+        self.db.post("wpa_winnow_decisions", row)
 
     def update_business_status(self, business_id: str, status: str) -> None:
         if self.dry_run:
             return
-        self.db.patch("businesses", f"id=eq.{business_id}", {"contact_status": status})
+        self.db.patch("wpa_businesses", f"id=eq.{business_id}", {"contact_status": status})
 
     def finalize_run(self, run_id: str, counts: dict | None = None) -> None:
         if self.dry_run:
@@ -965,7 +969,7 @@ class WinnowEngine:
             update["closed_count"] = counts.get("closed", 0)
             update["middle_band_count"] = counts.get("middle_band", 0)
             update["errors_count"] = counts.get("errors", 0)
-        self.db.patch("winnow_runs", f"id=eq.{run_id}", update)
+        self.db.patch("wpa_winnow_runs", f"id=eq.{run_id}", update)
 
     # ── Pipeline ──────────────────────────────────────────────────────
 
@@ -1045,10 +1049,10 @@ class WinnowEngine:
         """Show pipeline counts."""
         status_counts = {}
         for status in ("NEW", "IDENTIFIED", "CONTACTED", "REPLIED", "CLOSED", "CLOSED-WON"):
-            rows = self.db.get("businesses", {"contact_status": f"eq.{status}", "select": "id"})
+            rows = self.db.get("wpa_businesses", {"contact_status": f"eq.{status}", "select": "id"})
             status_counts[status] = len(rows)
 
-        decision_counts = self.db.get("winnow_decisions", {"select": "decision"})
+        decision_counts = self.db.get("wpa_winnow_decisions", {"select": "decision"})
         by_decision = {}
         for row in decision_counts:
             d = row["decision"]

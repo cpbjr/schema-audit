@@ -37,6 +37,7 @@ MAX_LCP_SECONDS = 2.5
 REQUEST_TIMEOUT = 10
 
 
+
 def ensure_directories() -> None:
     """Create output directories if they don't exist."""
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)

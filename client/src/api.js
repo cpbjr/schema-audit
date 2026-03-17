@@ -29,4 +29,9 @@ export const updateLeadStatus = async (id, status) => {
     return response.data;
 };
 
+export const generateEmail = async (id) => {
+    const response = await api.post(`/generate-email/${id}`);
+    return response.data;
+};
+
 export default api;

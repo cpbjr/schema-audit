@@ -1,14 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { getLeads, runAudit, updateLeadStatus } from '../api';
+import { getLeads, runAudit, updateLeadStatus, generateEmail } from '../api';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
-import { Loader2, PlayCircle, CheckCircle2, AlertTriangle, XCircle, Search, ExternalLink } from 'lucide-react';
+import { Loader2, PlayCircle, CheckCircle2, AlertTriangle, XCircle, Search, ExternalLink, Mail, Copy, X } from 'lucide-react';
 
 export default function Leads() {
     const [leads, setLeads] = useState([]);
     const [loading, setLoading] = useState(true);
     const [auditLoading, setAuditLoading] = useState({});
+    const [emailModalOpen, setEmailModalOpen] = useState(false);
+    const [emailContent, setEmailContent] = useState(null);
+    const [emailLoading, setEmailLoading] = useState(false);
+    const [copySuccess, setCopySuccess] = useState(false);
 
     useEffect(() => {
         fetchLeads();
@@ -46,6 +50,35 @@ export default function Leads() {
         } catch (error) {
             console.error('Status update failed', error);
         }
+    };
+
+    const handleGenerateEmail = async (id) => {
+        setEmailLoading(true);
+        try {
+            const email = await generateEmail(id);
+            setEmailContent(email);
+            setEmailModalOpen(true);
+        } catch (error) {
+            console.error('Email generation failed', error);
+            alert('Failed to generate email. Please try again.');
+        } finally {
+            setEmailLoading(false);
+        }
+    };
+
+    const handleCopyEmail = () => {
+        if (emailContent) {
+            const fullEmail = `Subject: ${emailContent.subject}\n\n${emailContent.body}`;
+            navigator.clipboard.writeText(fullEmail);
+            setCopySuccess(true);
+            setTimeout(() => setCopySuccess(false), 2000);
+        }
+    };
+
+    const closeModal = () => {
+        setEmailModalOpen(false);
+        setEmailContent(null);
+        setCopySuccess(false);
     };
 
     const getScoreBadge = (score) => {
@@ -149,6 +182,18 @@ export default function Leads() {
                                         Run Audit
                                     </Button>
                                 )}
+
+                                {lead.audit && (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleGenerateEmail(lead.id)}
+                                        disabled={emailLoading}
+                                    >
+                                        {emailLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
+                                        Generate Email
+                                    </Button>
+                                )}
                             </div>
                         </div>
                     </Card>
@@ -160,6 +205,94 @@ export default function Leads() {
                     </div>
                 )}
             </div>
+
+            {/* Email Modal */}
+            {emailModalOpen && emailContent && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                        {/* Modal Header */}
+                        <div className="flex justify-between items-center p-6 border-b">
+                            <h3 className="text-2xl font-bold">Generated Email</h3>
+                            <button
+                                onClick={closeModal}
+                                className="text-gray-500 hover:text-gray-700 transition-colors"
+                            >
+                                <X className="h-6 w-6" />
+                            </button>
+                        </div>
+
+                        {/* Modal Content */}
+                        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                            {/* Contact Info (if discovered) */}
+                            {(emailContent.owner_name || emailContent.owner_email) && (
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                    <h4 className="font-semibold text-blue-900 mb-2">Discovered Contact Info:</h4>
+                                    {emailContent.owner_name && (
+                                        <p className="text-sm text-blue-800">Name: {emailContent.owner_name}</p>
+                                    )}
+                                    {emailContent.owner_email && (
+                                        <p className="text-sm text-blue-800">Email: {emailContent.owner_email}</p>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Subject */}
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">Subject:</label>
+                                <div className="bg-gray-50 border border-gray-200 rounded p-3">
+                                    <p className="text-sm font-medium">{emailContent.subject}</p>
+                                </div>
+                            </div>
+
+                            {/* Body */}
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">Body:</label>
+                                <div className="bg-gray-50 border border-gray-200 rounded p-4">
+                                    <pre className="whitespace-pre-wrap text-sm font-sans leading-relaxed">
+                                        {emailContent.body}
+                                    </pre>
+                                </div>
+                            </div>
+
+                            {/* SameAs URLs (if found) */}
+                            {emailContent.sameas_urls && emailContent.sameas_urls.length > 0 && (
+                                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                                    <h4 className="font-semibold text-yellow-900 mb-2">Discovered Profiles:</h4>
+                                    <ul className="text-sm text-yellow-800 space-y-1">
+                                        {emailContent.sameas_urls.map((url, idx) => (
+                                            <li key={idx}>
+                                                <a href={url} target="_blank" rel="noreferrer" className="hover:underline">
+                                                    {url}
+                                                </a>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="flex justify-end items-center gap-3 p-6 border-t bg-gray-50">
+                            <Button variant="outline" onClick={closeModal}>
+                                Close
+                            </Button>
+                            <Button onClick={handleCopyEmail}>
+                                {copySuccess ? (
+                                    <>
+                                        <CheckCircle2 className="mr-2 h-4 w-4" />
+                                        Copied!
+                                    </>
+                                ) : (
+                                    <>
+                                        <Copy className="mr-2 h-4 w-4" />
+                                        Copy to Clipboard
+                                    </>
+                                )}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -36,6 +36,8 @@ class SupabaseWriter:
             "Authorization": f"Bearer {SUPABASE_KEY}",
             "Content-Type": "application/json",
             "Prefer": "resolution=merge-duplicates",
+            "Content-Profile": "wpa",
+            "Accept-Profile": "wpa",
         }
 
     def _post(self, table: str, payload: dict[str, Any]) -> None:
@@ -101,7 +103,7 @@ class SupabaseWriter:
 
         # Audits are always new rows (BIGSERIAL PK) — don't merge-duplicate
         headers = {**self._headers, "Prefer": "return=minimal"}
-        url = f"{SUPABASE_URL}/rest/v1/audits"
+        url = f"{SUPABASE_URL}/rest/v1/wpa_audits"
         resp = httpx.post(url, headers=headers, json=row, timeout=30)
         if resp.status_code not in (200, 201):
             raise RuntimeError(
