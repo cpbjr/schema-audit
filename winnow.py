@@ -734,7 +734,8 @@ class WinnowEngine:
 
     def fetch_batch(self, batch_size: int, search_query: str | None = None) -> list[dict]:
         """Fetch businesses not yet evaluated, highest-priority first."""
-        # Base query: NEW businesses not in winnow_decisions
+        # Base query: IDENTIFIED businesses not in winnow_decisions
+        # IDENTIFIED = discovered by Bud, not yet evaluated by winnow or promoted to active pipeline
         already_evaluated = {
             row["business_id"]
             for row in self.db.get("wpa_winnow_decisions", {"select": "business_id"})
@@ -743,7 +744,7 @@ class WinnowEngine:
         params = {
             "select": "id,name,address,phone,website_url,gbp_categories,search_query,"
                       "discovery_rank,business_status,rating,user_rating_count,raw_data,contact_status",
-            "contact_status": "eq.NEW",
+            "contact_status": "eq.IDENTIFIED",
             "order": "user_rating_count.desc.nullslast",
             "limit": str(batch_size * 3),  # Over-fetch since we filter already-evaluated
         }
